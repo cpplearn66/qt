@@ -1,0 +1,251 @@
+#include "widget.h"
+
+#include <QApplication>
+#include <QMainWindow>
+#include <QSplashScreen>
+#include <QTimer>
+#include <QPixmap>
+
+int main(int argc, char *argv[])
+{
+    QApplication a(argc, argv);
+
+    // 加载并缩放图片
+    QPixmap pixmap("C:/Users/admin/Desktop/image/39859570-b6c3-4f4f-8fde-91575d19c547.jpg");  // 替换为你的图片路径
+    QPixmap scaledPixmap = pixmap.scaled(400, 300, Qt::KeepAspectRatio, Qt::SmoothTransformation); // 缩放图片到适当大小
+
+    QSplashScreen splash(scaledPixmap);
+    splash.show();
+    a.processEvents();
+
+    Widget w;
+
+    // 使用定时器等待 Splash Screen 完成后再显示主窗口
+    QTimer::singleShot(3000, [&]() {
+        splash.close();  // 关闭 Splash Screen
+
+        w.show();  // 显示主窗口
+    });
+
+    return a.exec();
+}
+
+
+----------------------------------------------------------------------------------------------------------
+
+
+
+#ifndef WIDGET_H
+#define WIDGET_H
+
+#include <QWidget>
+#include <QLabel>
+#include <QGraphicsView>
+#include <QGraphicsScene>
+#include <QScrollArea>
+
+QT_BEGIN_NAMESPACE
+namespace Ui { class Widget; }
+QT_END_NAMESPACE
+
+class Widget : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit Widget(QWidget *parent = nullptr);
+    ~Widget();
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+    int16_t extractInt16AfterSequence(const QByteArray &data, const QByteArray &sequence, int offset);
+
+private slots:
+
+    void on_pushButton_clicked();
+
+private:
+    void loadAndDisplayImage(const QString &filePath);
+
+    Ui::Widget *ui;
+//    QLabel *imageLabel;          // 用于显示图片的 QLabe
+    QGraphicsView *graphicsView; // 用于显示图片的 QGraphicsView
+    QGraphicsScene *graphicsScene; // 用于 QGraphicsView 的场景
+};
+
+#endif // WIDGET_H
+
+
+
+
+
+
+-------------------------------------------------------------------------------------
+
+
+
+#include "widget.h"
+#include "./ui_widget.h"
+#include <QMessageBox>
+#include <QDropEvent>
+#include <QDragEnterEvent>
+#include <QMimeData>
+#include <QPixmap>
+#include <QDebug>
+#include <QVBoxLayout>
+#include <QPalette>
+#include <QFile>
+#include <QByteArray>
+#include <QGraphicsPixmapItem>
+
+Widget::Widget(QWidget *parent)
+    : QWidget(parent)
+    , ui(new Ui::Widget)
+    , graphicsView(new QGraphicsView(this))
+{
+    ui->setupUi(this);
+
+    graphicsScene = new QGraphicsScene(this);
+    graphicsView->setScene(graphicsScene);
+
+    // 设置 QGraphicsView 的固定大小
+    graphicsView->setFixedSize(600, 800);  // 根据需要调整大小
+
+    // 禁用滚动条
+    graphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    // 布局设置
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->addWidget(graphicsView);
+    layout->setAlignment(graphicsView, Qt::AlignCenter);  // 使 QGraphicsView 居中
+    setLayout(layout);
+
+    // 设置 Widget 的固定大小
+    setFixedSize(1600, 800);  // 根据需要调整大小
+
+    // 允许 Widget 接受拖放操作
+    setAcceptDrops(true);
+}
+
+Widget::~Widget()
+{
+    delete graphicsScene;
+    delete graphicsView;
+    delete ui;
+}
+
+void Widget::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        event->acceptProposedAction();
+    } else {
+        event->ignore();
+    }
+
+}
+
+void Widget::dropEvent(QDropEvent *event)
+{
+    const QList<QUrl> urls = event->mimeData()->urls();
+    if (!urls.isEmpty()) {
+        QString filePath = urls.first().toLocalFile();
+        loadAndDisplayImage(filePath);
+    }
+}
+
+void Widget::loadAndDisplayImage(const QString &filePath)
+{
+    // 输出图片路径到调试控制台
+    qDebug() << "Loading image from path:" << filePath;
+
+    // 读取图片
+    QPixmap pixmap(filePath);
+    if (pixmap.isNull()) {
+        QMessageBox::critical(this, tr("Error"), tr("无法加载图片文件！"));
+        return;
+    }
+
+    // 在 QGraphicsView 中显示图片
+    graphicsScene->clear();  // 清除现有内容
+    QGraphicsPixmapItem *item = new QGraphicsPixmapItem(pixmap);
+    graphicsScene->addItem(item);
+    graphicsView->fitInView(item, Qt::KeepAspectRatio);  // 适应视图
+
+    // 打印图片的宽度和高度
+    qDebug() << "Image width:" << pixmap.width();
+    qDebug() << "Image height:" << pixmap.height();
+}
+
+
+
+
+QByteArray readImageBinary(const QString &filePath)
+{
+    QFile file(filePath);
+
+    // 尝试打开文件
+    if (!file.open(QIODevice::ReadOnly)) {
+        qDebug() << "Failed to open file:" << filePath;
+        return QByteArray();
+    }
+
+    // 读取文件的二进制数据
+    QByteArray binaryData = file.readAll();
+
+    file.close();
+    return binaryData;
+}
+
+int16_t Widget::extractInt16AfterSequence(const QByteArray &data, const QByteArray &sequence, int offset)
+{
+    int index = data.indexOf(sequence);
+
+    // 计算从序列开始位置的偏移量
+    int position = index + sequence.size() + offset;
+
+    // 提取序列后的4字节数据
+    QByteArray followingBytes = data.mid(position, 4);
+
+    // 将这4字节数据解释为一个 int16_t
+    int16_t value;
+    memcpy(&value, followingBytes.constData(), sizeof(int16_t));
+
+    return value;
+}
+void Widget::on_pushButton_clicked()
+{
+    QString filePath = "C:/Users/admin/Desktop/image/jable-yeon-woo-vol-3-005.jpg";
+    QByteArray imageData = readImageBinary(filePath);
+
+    if (!imageData.isEmpty()) {
+        // 现在可以在 imageData 中解析你需要的信息
+        qDebug() << "Image data size:" << imageData.size();
+        // 例如，打印前 100 个字节的十六进制表示
+        qDebug() << "First 100 bytes:" << imageData.left(2000).toHex();
+    } else {
+        qDebug() << "Failed to read image data.";
+    }
+
+    // 定义目标字节序列
+    QByteArray targetSequence = QByteArray::fromHex("BEF5F9FDA13EFCC0");
+
+    // 提取并输出结果
+    int16_t value1  = extractInt16AfterSequence(imageData, targetSequence, 8);
+
+    int16_t value2 = extractInt16AfterSequence(imageData, targetSequence, 12);
+
+    int16_t value3 = extractInt16AfterSequence(imageData, targetSequence, 16);
+
+    int16_t value4 = extractInt16AfterSequence(imageData, targetSequence, 20);
+
+    if (value1 != -1 && value2 != -1 && value3 != -1 && value4 != -1) {
+        qDebug() << "Extracted int16 value 1:" << value1;
+        qDebug() << "Extracted int16 value 2:" << value2;
+        qDebug() << "Extracted int16 value 3:" << value3;
+        qDebug() << "Extracted int16 value 4:" << value4;
+    }
+
+}
+
